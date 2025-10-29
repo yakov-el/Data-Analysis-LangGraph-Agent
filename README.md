@@ -1,16 +1,3 @@
-מעולה. נניח שאתה מתכוון לקובץ התיעוד הראשי: **`README.md`**.
-
-זהו הקובץ שיהיה **הדבר הראשון שהבוחן יראה** ב-Git Repository שלך. הוא מכיל את התיעוד הטכני ואת הוראות ההפעלה.
-
------
-
-## שלב 1: יצירת קובץ `README.md`
-
-**שם קובץ:** `README.md` (חובה, כדי שיוצג אוטומטית ב-GitHub/GitLab)
-
-**תוכן:**
-
-העתק את הקוד המלא הבא לתוך הקובץ. הוא עונה על כל סעיפי התיעוד שנדרשו במטלה:
 
 ````markdown
 # 🤖 LangGraph Data Analysis Agent - E-commerce Insights
@@ -111,4 +98,5 @@ python cli_interface.py
 **Example Query:** `מהם 5 המוצרים המדורגים ביותר (highest rating) שנמכרו בארצות הברית בחודשים האחרונים?`
 
 ```
+
 ```
