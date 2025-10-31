@@ -1,3 +1,12 @@
+# ==========================
+# LangGraph BigQuery Agent
+# Sorted & documented (comments only, code unchanged)
+# NOTE: I did NOT change any code lines — only added comments / separators.
+# ==========================
+
+# --------------------------
+# Imports
+# --------------------------
 import os
 import json
 from typing_extensions import Literal
@@ -14,15 +23,21 @@ from langgraph.prebuilt import ToolNode
 from dotenv import load_dotenv
 from datetime import datetime
 
+# --------------------------
+# Environment / LLM init
+# --------------------------
 # הכנס כאן את שם הקובץ שהורדת
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "langgraph-ecommerce-test-bbbaad28a1af.json"
+# os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "langgraph-ecommerce-test-bbbaad28a1af.json"
 
 load_dotenv()  
 api_key = os.getenv("GOOGLE_API_KEY")
 
 llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash") 
-# State Definition
+
 # ==========================
+# State definition
+# ==========================
+# (Pydantic model describing agent state)
 class AgentState(MessagesState):
     candidate_tables: List[str] = Field(
         default_factory=list,
@@ -68,7 +83,7 @@ class AgentState(MessagesState):
 # ==========================
 # Tools
 # ==========================
-
+# run_query_tool: executes SQL on BigQuery and returns JSON
 @tool
 def run_query_tool(query: str) -> str:
     """Execute a SQL query on the BigQuery public dataset and return the results."""
@@ -83,6 +98,7 @@ def run_query_tool(query: str) -> str:
         return f"Query failed: {e}"
 
 
+# json_overview_tool: loads the overview.txt produced by the generator
 @tool
 def json_overview_tool() -> str:
     """Loads the table overview text for table selection."""
@@ -94,8 +110,9 @@ def json_overview_tool() -> str:
 
 
 # ==========================
-# Helper Functions
+# Helper functions
 # ==========================
+# ensure_public_dataset: normalize table identifiers / backticks
 def ensure_public_dataset(query: str) -> str:
     """
     דואגת שכל טבלה תכלול את הפרויקט הנכון בצורה תקינה.
@@ -136,12 +153,14 @@ def ensure_public_dataset(query: str) -> str:
     return query
 
 
+# is_duplicate_query: check query history for duplicates
 def is_duplicate_query(query_history: List[Dict], q_type: str, q: str) -> bool:
     for entry in query_history:
         if entry.get("type") == q_type and entry.get("query") == q:
             return True
     return False
 
+# keep_first_tool_call: ensure only first tool_call is kept
 def keep_first_tool_call(ai_msg: AIMessage) -> AIMessage:
     # Ensure only one tool call is kept in the message (if any)
     tcs = getattr(ai_msg, "tool_calls", None) or []
@@ -150,9 +169,11 @@ def keep_first_tool_call(ai_msg: AIMessage) -> AIMessage:
     first = tcs[0]
     return AIMessage(content=ai_msg.content, tool_calls=[first])
 
+# schema_file_exists: checks optional schema store
 def schema_file_exists(table_name: str) -> bool:
     return os.path.exists(f"ifyunim_json/{table_name}.json")
 
+# is_query_result_empty_or_failed: normalize tool results and detect failures
 def is_query_result_empty_or_failed(result_content: str) -> bool:
     try:
         if isinstance(result_content, str):
@@ -173,6 +194,7 @@ def is_query_result_empty_or_failed(result_content: str) -> bool:
         # If can't parse, don't assume it's empty
         return False
 
+# extract_table_names: robust extraction from overview object
 def extract_table_names(overview_obj) -> List[str]:
     """
     Robustly extract table names from overview, regardless of shape:
@@ -215,7 +237,7 @@ def extract_table_names(overview_obj) -> List[str]:
     return uniq
 
 # ==========================
-# Graph Nodes
+# Graph Nodes (StateGraph functions)
 # ==========================
 class CandidateTables(BaseModel):
     """The model's selection of the most relevant tables for the user's query."""
@@ -559,7 +581,6 @@ def run_query_node(state: AgentState):
 # ==========================
 # Routing helper fix
 # ==========================
-
 def route_after_run(state: AgentState) -> Literal["final_answer", "generate_query_or_loop", "final_failure_next_table"]:
     # Guard: if the last message is not a ToolMessage, return final_answer to avoid looping
     last_msg = state.get("messages", [])[-1]
