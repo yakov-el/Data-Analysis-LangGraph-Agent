@@ -1,102 +1,248 @@
+# LangGraph Data Analysis Agent — README
 
-````markdown
-# 🤖 LangGraph Data Analysis Agent - E-commerce Insights
-
-**Assignment:** AI Technical Assignment - Data Analysis LangGraph Agent
-
-This agent is built using the LangGraph framework and the Gemini 2.5 Pro model to analyze the public Google BigQuery E-commerce dataset (`bigquery-public-data.thelook_ecommerce`) and generate business insights based on user queries.
+Version: 1.0.0
 
 ---
 
-## 1. Deliverables: Architecture Documentation
+## Project Summary
 
-### 1.1 High-Level Architecture Diagram (Link to Image)
+This repository contains an LLM-driven agent (LangGraph + LLM) that accepts natural-language questions from a user, identifies which BigQuery tables are relevant, issues exploratory and final SQL queries, and returns a concise natural-language answer. It's intended as a template for building RAG/agent systems that analyze structured datasets.
 
-[**View Architecture Diagram: architecture.png**](architecture.png) 
-*(Please ensure the image file is included in the repository)*
+The project is split into two main components:
 
-### 1.2 Technical Explanation
-
-#### Reasoning for Chosen Cloud Services and LLM
-
-| Component | Technology | Rationale |
-| :--- | :--- | :--- |
-| **LLM Backend** | **Google Gemini 2.5 Pro** | Chosen for its superior reasoning capabilities, which is crucial for the complex, multi-step task of dynamic SQL generation and context integration (schema, exploratory results). The high-quality structured output capabilities enhance the reliability of tool calling. |
-| **Agent Framework** | **LangGraph** | Required by the assignment. It enables complex, multi-stage control flow, specifically the essential looping mechanism to sequentially explore candidate tables and the conditional routing for robust error and success management. |
-| **Data Source** | **Google BigQuery** | Required by the assignment to access the specified public dataset. Utilized directly via the `google-cloud-bigquery` library for efficient data retrieval. |
-| **Authentication** | **Application Default Credentials (ADC)** | Best practice for authenticating to Google Cloud services (BigQuery) in a development environment, ensuring security without hardcoding sensitive credentials. |
-
-#### Data Flow and Agent Logic
-
-The agent utilizes a stateful LangGraph structure (`AgentState`) to manage conversational history and data analysis context:
-
-1.  **Start:** The user provides a natural language query (`cli_interface.py`).
-2.  **Table Selection (`select_candidates`):** Gemini reads the `overview.txt` (containing all table schemas) and selects the 3-5 most relevant tables for the query.
-3.  **Iterative Analysis (Loop):** The graph enters a loop (`loop_entry`, `get_next_schema`).
-    * **Exploratory Query (`generate_query_node`):** For the first pass on a table, Gemini generates a small exploratory query to identify key values (e.g., date ranges, status fields). This query is executed via the `run_query_tool`.
-    * **Final Query Generation (`generate_query_node`):** Once exploratory results are available, Gemini generates the final, complex SQL query using the original user question, the full schema, and the gathered exploratory data.
-4.  **Execution (`run_query_node`):** The query is executed against BigQuery.
-5.  **Routing & Fallback (`route_after_run`):**
-    * **Success (Exploratory):** Loops back to generate the Final Query.
-    * **Success (Final):** Proceeds to the `final_answer` node.
-    * **Failure/Empty Result (Final):** Routes to the `on_final_failure` node, resets the state for exploration, and returns to the loop entry to check the **next candidate table**. This provides a robust fallback mechanism.
-6.  **Summary (`final_answer`):** Gemini summarizes the successful query results into a clear business insight in Hebrew and returns it to the user.
-
-#### Error Handling and Fallback Strategies
-
-1.  **BigQuery Connection:** Relies on `gcloud auth application-default login` for robust initial connection setup.
-2.  **Tool Execution Errors:** The `run_query_tool` catches Python and BigQuery exceptions (e.g., invalid SQL syntax) and returns the error message to the LLM for self-correction.
-3.  **Empty/Failed Results:** The conditional edge logic (`route_after_run`) explicitly checks for empty or failed final query results. If a failure occurs and there are remaining candidate tables, the agent **automatically tries the next relevant table**, demonstrating resilience.
+1. **Overview generator** — a script that creates `overview.txt` containing table schemas and example rows to be used as a static "map" by the agent.
+2. **Agent (LangGraph)** — a stateful graph (StateGraph) that uses an LLM to select candidate tables, run queries through a BigQuery tool, and assemble the final response.
 
 ---
 
-## 2. Deliverables: Working Application (CLI)
+## Recommended repository layout
 
-### Setup and Running the Agent
+```
+README.md
+requirements.txt
+.env                  # environment variables 
+overview.txt          # generated by the overview script
+agent_graph.py        # main graph / agent implementation
+cli_interface.py
+setup_overview.py     # script that generates the overview 
+.gitignore
+```
 
-This project requires Python 3.8+, the Google Cloud SDK, and a Gemini API key.
+---
 
-#### Step 1: Clone Repository and Install Dependencies
+## Prerequisites
+
+1. Python 3.10+ (recommended) or 3.9+.
+2. Google Cloud account with BigQuery access (or use the public dataset used in examples).
+3. Service Account JSON with at least `bigquery.tables.get` and `bigquery.jobs.create` or equivalent roles.
+4. (Optional) gcloud CLI for Application Default Credentials (`gcloud auth application-default login`).
+
+---
+
+## Important environment variables
+
+Use a `.env` file (excluded from Git). Example:
+
+```
+# .env
+GOOGLE_API_KEY= # optional if you use different access methods
+GOOGLE_APPLICATION_CREDENTIALS=langgraph-ecommerce-test-bbbaad28a1af.json
+
+# LLM / API keys (if applicable)
+#OPENAI_API_KEY=
+#OTHER_MODEL_KEY=
+```
+
+> **Warning:** Never commit service account JSON files or API keys to a public repository. Add them to `.gitignore`.
+
+---
+
+## Install dependencies
+
+Create a virtual environment and install the project dependencies:
 
 ```bash
-# Clone your repository here
-git clone <your_repo_link>
-cd <your_repo_folder>
+python -m venv .venv
+source .venv/bin/activate   # macOS / Linux
+.venv\Scripts\activate  # Windows (PowerShell: .\.venv\Scripts\Activate.ps1)
 
-# Install Python libraries with pinned versions
 pip install -r requirements.txt
-````
+```
 
-#### Step 2: Configure Authentication
 
-1.  **BigQuery Access (ADC):** You must authenticate your environment to access the public BigQuery dataset:
-    ```bash
-    gcloud auth application-default login
-    ```
-2.  **Gemini API Key:** Create a file named **`.env`** in the project root and add your API key:
-    ```env
-    GOOGLE_API_KEY="YOUR_GEMINI_API_KEY_HERE"
-    ```
+```
+google-cloud-bigquery>=3.4.0
+pandas
+numpy
+python-dotenv
+langchain
+langchain-core
+langchain-community
+langgraph
+google-generativeai  # optional, if using Gemini via that SDK
+```
 
-#### Step 3: Generate Schema Overview
+Add any other libraries you actually use (e.g., for the ChatGoogleGenerativeAI wrapper).
 
-Run the setup script once to connect to BigQuery and generate the context file (`overview.txt`) used by the agent:
+---
+
+## Generate the overview file
+
+The `overview_generator.py` script (the code you shared) produces an `overview.txt` file with schema information and up to 5 sample rows per table.
+
+1. Ensure your Service Account JSON file is accessible and `GOOGLE_APPLICATION_CREDENTIALS` points to it (or use ADC via `gcloud`).
+2. Run:
 
 ```bash
 python setup_overview.py
-# Expected output: ✅ Overview generation complete. Saved to overview.txt
 ```
 
-#### Step 4: Run the CLI Agent
+If successful you will see:
 
-Start the conversational interface:
+```
+✅ Overview generation complete. Saved to overview.txt
+```
+
+**Troubleshooting:**
+- Verify the JSON path and its permissions.
+- Ensure your Service Account has BigQuery read permissions (e.g., `roles/bigquery.dataViewer`).
+- Check network / project settings.
+
+---
+
+## Run the agent (CLI)
+
+1. Make sure `overview.txt` exists and the credentials are available.
+2. Run the agent script:
 
 ```bash
 python cli_interface.py
 ```
 
-**Example Query:** `מהם 5 המוצרים המדורגים ביותר (highest rating) שנמכרו בארצות הברית בחודשים האחרונים?`
+
+You will see a CLI prompt. Example:
 
 ```
+You: How many active customers did we have last month?
+Agent: ...
+```
+
+**Notes:**
+- Queries to BigQuery may take seconds to minutes depending on complexity and data scanned.
+- Prefer testing against public datasets or a development project to avoid costs and throttles.
+
+---
+
+## High-level architecture
+
+1. **Overview Generator** — extracts table schema and small samples and writes `overview.txt`.
+2. **Select Candidate Tables** — the LLM consumes `overview.txt` and selects 3–5 candidate tables.
+3. **Exploration** — for each candidate table the agent runs a single exploratory SQL query (tool call) to gather sample or statistics.
+4. **Final Query** — the agent synthesizes one final SQL query and executes it via the tool.
+5. **Responder** — LLM summarizes query results and returns a user-facing answer.
+
+---
+
+## Key files and their roles
+
+- `overview_generator.py` — generates `overview.txt` (the code you provided).
+- `agent_graph.py` — contains StateGraph, nodes, routing, tools, and the CLI chat loop.
+- `cli_interface.py`
+- `langgraph-ecommerce-test-*.json` — Service Account keys (keep private).
+
+---
+
+## Useful commands
+
+- Show the overview:
+
+```bash
+cat overview.txt | less
+```
+
+- Check installed langchain-related packages:
+
+```bash
+pip list | grep langchain
+```
+
+- Authenticate using Application Default Credentials (optional):
+
+```bash
+gcloud auth application-default login
+```
+
+---
+
+## Security best practices
+
+- Add sensitive files to `.gitignore`:
 
 ```
+# .gitignore
+langgraph-ecommerce-test-*.json
+.env
+__pycache__/
+.venv/
+```
+
+- Follow principle of least privilege for your Service Account.
+- Do not push API keys or credentials to public repos.
+
+---
+
+## Debugging & Troubleshooting
+
+1. **`overview.txt not found`** — ensure the generator ran and the file path is correct.
+2. **Authentication errors** — verify `GOOGLE_APPLICATION_CREDENTIALS` or run `gcloud auth application-default login`.
+3. **Permission denied for queries** — ensure the Service Account has correct BigQuery permissions.
+4. **LLM doesn't produce tool_calls** — check the LLM wrapper and system prompts; ensure `bind_tools` and `with_structured_output` APIs match the installed library versions.
+5. **Backtick/syntax issues** — use `ensure_public_dataset()` to normalize and correct generated SQL formatting.
+
+---
+
+## Optional: Docker example
+
+```dockerfile
+# Dockerfile
+FROM python:3.10-slim
+WORKDIR /app
+COPY . /app
+RUN python -m pip install --upgrade pip && \
+    pip install -r requirements.txt
+# Consider mounting credentials at runtime instead of copying them into the image.
+CMD ["python", "agent_graph.py"]
+```
+
+---
+
+## Publishing to GitHub (quick guide)
+
+```bash
+git init
+git add .
+git commit -m "Initial commit — LangGraph BigQuery Agent"
+# Create repo on GitHub (UI or CLI), then:
+git remote add origin git@github.com:<username>/<repo>.git
+git branch -M main
+git push -u origin main
+```
+
+> Make sure `.gitignore` prevents committing credentials.
+
+---
+
+## Future enhancements
+
+- Convert `overview.txt` to structured JSON/YAML for safer parsing.
+- Add query-plan safety checks / a review step before executing generated SQL (avoid expensive scans and reduce risk).
+- Add logging/metrics (Prometheus) and tracing for production readiness.
+- Provide an HTTP API (FastAPI) or a web UI instead of CLI for easier integration.
+
+---
+
+## License
+
+Add a `LICENSE` file (MIT, Apache-2.0, or other) to declare usage terms.
+
+---
