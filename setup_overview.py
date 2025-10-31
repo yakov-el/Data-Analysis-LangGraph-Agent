@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 load_dotenv() 
 
 
-# os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "langgraph-ecommerce-test-bbbaad28a1af.json"
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "langgraph-ecommerce-test-bbbaad28a1af.json"
 # שימוש ב-ADC (מומלץ): לוודא שהופעל gcloud auth application-default login בטרמינל.
 
 # ---------- CONFIG ----------
